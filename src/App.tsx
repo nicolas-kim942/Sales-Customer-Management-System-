@@ -6,11 +6,17 @@ import { Navbar } from './components/Navbar';
 import { DataManagementView } from './components/DataManagementView';
 import { ComparisonDashboardView } from './components/ComparisonDashboardView';
 import { AccountDetailModal } from './components/AccountDetailModal';
+import { LoginModal } from './components/LoginModal';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
 
 const STORAGE_KEY_EXISTING = 'exs04.master.v1';
 const STORAGE_KEY_POTENTIAL = 'exs04.potential.v1';
 
 export default function App() {
+  // Auth state
+  const [user, setUser] = useState<any>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+
   // Existing accounts state
   const [existingAccounts, setExistingAccounts] = useState<ExistingAccount[]>(() => {
     try {
@@ -24,7 +30,7 @@ export default function App() {
     return INITIAL_EXISTING_ACCOUNTS;
   });
 
-  // Potential accounts state
+  // Potential accounts state (accumulated CSV data)
   const [potentialAccounts, setPotentialAccounts] = useState<PotentialAccount[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_POTENTIAL);
@@ -43,6 +49,29 @@ export default function App() {
   // Selected account for detail modal (S-03)
   const [selectedAccount, setSelectedAccount] = useState<AnalyzedAccount | null>(null);
 
+  // Check Supabase session on mount
+  useEffect(() => {
+    if (isSupabaseConfigured && supabase) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          setUser(session.user);
+          setIsAuthenticated(true);
+        }
+      });
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (session?.user) {
+          setUser(session.user);
+          setIsAuthenticated(true);
+        } else {
+          setUser(null);
+        }
+      });
+
+      return () => subscription.unsubscribe();
+    }
+  }, []);
+
   // Persist to LocalStorage
   useEffect(() => {
     try {
@@ -59,6 +88,47 @@ export default function App() {
       console.error('Failed to save potential accounts', e);
     }
   }, [potentialAccounts]);
+
+  // Sync / Accumulate to Supabase if connected
+  const syncToSupabase = async (newPotentials: PotentialAccount[], fileName = 'upload.csv') => {
+    if (!isSupabaseConfigured || !supabase || !user) return;
+    try {
+      // 1. Log upload batch
+      await supabase.from('upload_logs').insert({
+        file_name: fileName,
+        record_count: newPotentials.length,
+        uploaded_by: user.email,
+      });
+
+      // 2. Upsert potential accounts (accumulate)
+      const recordsToInsert = newPotentials.map(p => ({
+        account_id: p.account_id,
+        company_name: p.company_name,
+        country: p.country,
+        application: p.application,
+        contact_email: p.contact_email,
+        contact_person: p.contact_person || '',
+        phone: p.phone || '',
+        batch_id: new Date().toISOString(),
+      }));
+
+      await supabase.from('potential_accounts').upsert(recordsToInsert, { onConflict: 'account_id' });
+    } catch (err) {
+      console.error('Supabase sync warning (Table might not be created yet):', err);
+    }
+  };
+
+  // Custom handler when potential accounts are updated/accumulated from CSV
+  const handleUpdatePotentialAccounts = (updater: React.SetStateAction<PotentialAccount[]>) => {
+    setPotentialAccounts(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      // If new records added, try syncing to Supabase
+      if (next.length > prev.length && isSupabaseConfigured && user) {
+        syncToSupabase(next);
+      }
+      return next;
+    });
+  };
 
   // Analyzed data computed in real-time
   const analyzedData = useMemo(() => {
@@ -91,6 +161,29 @@ export default function App() {
     }
   };
 
+  const handleLogout = async () => {
+    if (isSupabaseConfigured && supabase) {
+      await supabase.auth.signOut();
+    }
+    setIsAuthenticated(false);
+    setUser(null);
+  };
+
+  // If not authenticated and not bypassed, show login modal
+  if (!isAuthenticated) {
+    return (
+      <LoginModal
+        onLoginSuccess={(loggedInUser) => {
+          setUser(loggedInUser);
+          setIsAuthenticated(true);
+        }}
+        onBypassForDemo={() => {
+          setIsAuthenticated(true);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col text-slate-900 font-sans antialiased selection:bg-blue-600 selection:text-white">
       {/* Navbar */}
@@ -102,6 +195,8 @@ export default function App() {
         onResetToSample={handleResetToSample}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        userEmail={user?.email || '영업팀 데모 사용자'}
+        onLogout={handleLogout}
       />
 
       {/* Main Content View */}
@@ -111,7 +206,7 @@ export default function App() {
             existingAccounts={existingAccounts}
             setExistingAccounts={setExistingAccounts}
             potentialAccounts={potentialAccounts}
-            setPotentialAccounts={setPotentialAccounts}
+            setPotentialAccounts={handleUpdatePotentialAccounts}
             onLoadSampleData={handleResetToSample}
             onGoToDashboard={() => setActiveTab('dashboard')}
           />

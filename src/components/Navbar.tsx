@@ -1,5 +1,5 @@
 import React from 'react';
-import { Building2, FileSpreadsheet, RefreshCw, Sparkles, ShieldCheck } from 'lucide-react';
+import { Building2, FileSpreadsheet, RefreshCw, Sparkles, ShieldCheck, LogOut, User } from 'lucide-react';
 
 interface NavbarProps {
   totalCount: number;
@@ -9,6 +9,8 @@ interface NavbarProps {
   onResetToSample: () => void;
   activeTab: 'data-management' | 'dashboard';
   setActiveTab: (tab: 'data-management' | 'dashboard') => void;
+  userEmail?: string;
+  onLogout?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -19,6 +21,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onResetToSample,
   activeTab,
   setActiveTab,
+  userEmail,
+  onLogout,
 }) => {
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
@@ -93,6 +97,24 @@ export const Navbar: React.FC<NavbarProps> = ({
               <RefreshCw className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
               샘플 복원
             </button>
+
+            {userEmail && (
+              <div className="flex items-center space-x-2 pl-2 border-l border-slate-200">
+                <span className="text-xs text-slate-600 hidden xl:inline flex items-center">
+                  <User className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                  {userEmail}
+                </span>
+                {onLogout && (
+                  <button
+                    onClick={onLogout}
+                    title="로그아웃"
+                    className="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -119,3 +141,4 @@ export const Navbar: React.FC<NavbarProps> = ({
     </header>
   );
 };
+
