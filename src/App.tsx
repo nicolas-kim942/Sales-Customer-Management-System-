@@ -7,7 +7,7 @@ import { DataManagementView } from './components/DataManagementView';
 import { ComparisonDashboardView } from './components/ComparisonDashboardView';
 import { AccountDetailModal } from './components/AccountDetailModal';
 import { LoginModal } from './components/LoginModal';
-import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { getSupabaseClient, isSupabaseConfigured } from './lib/supabase';
 
 const STORAGE_KEY_EXISTING = 'exs04.master.v1';
 const STORAGE_KEY_POTENTIAL = 'exs04.potential.v1';
@@ -51,15 +51,16 @@ export default function App() {
 
   // Check Supabase session on mount
   useEffect(() => {
-    if (isSupabaseConfigured && supabase) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
+    const client = getSupabaseClient();
+    if (isSupabaseConfigured() && client) {
+      client.auth.getSession().then(({ data: { session } }) => {
         if (session?.user) {
           setUser(session.user);
           setIsAuthenticated(true);
         }
       });
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
         if (session?.user) {
           setUser(session.user);
           setIsAuthenticated(true);
@@ -91,10 +92,11 @@ export default function App() {
 
   // Sync / Accumulate to Supabase if connected
   const syncToSupabase = async (newPotentials: PotentialAccount[], fileName = 'upload.csv') => {
-    if (!isSupabaseConfigured || !supabase || !user) return;
+    const client = getSupabaseClient();
+    if (!isSupabaseConfigured() || !client || !user) return;
     try {
       // 1. Log upload batch
-      await supabase.from('upload_logs').insert({
+      await client.from('upload_logs').insert({
         file_name: fileName,
         record_count: newPotentials.length,
         uploaded_by: user.email,
@@ -112,7 +114,7 @@ export default function App() {
         batch_id: new Date().toISOString(),
       }));
 
-      await supabase.from('potential_accounts').upsert(recordsToInsert, { onConflict: 'account_id' });
+      await client.from('potential_accounts').upsert(recordsToInsert, { onConflict: 'account_id' });
     } catch (err) {
       console.error('Supabase sync warning (Table might not be created yet):', err);
     }
@@ -162,8 +164,9 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    if (isSupabaseConfigured && supabase) {
-      await supabase.auth.signOut();
+    const client = getSupabaseClient();
+    if (isSupabaseConfigured() && client) {
+      await client.auth.signOut();
     }
     setIsAuthenticated(false);
     setUser(null);

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { ShieldCheck, Lock, Mail, KeyRound, AlertCircle, ArrowRight, Database, Code, Check } from 'lucide-react';
+import { getSupabaseClient, isSupabaseConfigured, getSupabaseConfig } from '../lib/supabase';
+import { ShieldCheck, Lock, Mail, KeyRound, AlertCircle, ArrowRight, Database, Code, Check, Settings, Server } from 'lucide-react';
 
 interface LoginModalProps {
   onLoginSuccess: (user: any) => void;
@@ -13,6 +13,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess, onBypass
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Supabase runtime config state
+  const currentConfig = getSupabaseConfig();
+  const [showConfig, setShowConfig] = useState(!isSupabaseConfigured());
+  const [supabaseUrl, setSupabaseUrl] = useState(currentConfig.url);
+  const [supabaseKey, setSupabaseKey] = useState(currentConfig.key);
+  const [configSuccess, setConfigSuccess] = useState(false);
+
   const [showSqlModal, setShowSqlModal] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
 
@@ -56,10 +64,23 @@ create policy "Allow auth users existing_accounts" on public.existing_accounts f
 create policy "Allow auth users potential_accounts" on public.potential_accounts for all using (auth.role() = 'authenticated');
 create policy "Allow auth users upload_logs" on public.upload_logs for all using (auth.role() = 'authenticated');`;
 
+  const handleSaveConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    localStorage.setItem('supabase_custom_url', supabaseUrl.trim());
+    localStorage.setItem('supabase_custom_key', supabaseKey.trim());
+    setConfigSuccess(true);
+    setTimeout(() => {
+      setConfigSuccess(false);
+      setShowConfig(false);
+    }, 1500);
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isSupabaseConfigured || !supabase) {
-      setErrorMsg('Supabase 환경 변수(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY)가 설정되지 않았습니다. 데모 모드로 접속하세요.');
+    const client = getSupabaseClient();
+    if (!client || !isSupabaseConfigured()) {
+      setErrorMsg('Supabase URL 및 Anon Key가 올바르게 설정되지 않았습니다. 아래 Supabase 설정 버튼을 눌러 키를 입력해주세요.');
+      setShowConfig(true);
       return;
     }
 
@@ -68,7 +89,7 @@ create policy "Allow auth users upload_logs" on public.upload_logs for all using
 
     try {
       if (isSignUp) {
-        const { data, error } = await supabase.auth.signUp({
+        const { data, error } = await client.auth.signUp({
           email,
           password,
         });
@@ -78,7 +99,7 @@ create policy "Allow auth users upload_logs" on public.upload_logs for all using
           onLoginSuccess(data.user);
         }
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await client.auth.signInWithPassword({
           email,
           password,
         });
@@ -101,8 +122,8 @@ create policy "Allow auth users upload_logs" on public.upload_logs for all using
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-xs p-4 animate-fadeIn">
-      <div className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-xs p-4 overflow-y-auto animate-fadeIn">
+      <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 my-8">
         {/* Header */}
         <div className="bg-gradient-to-br from-blue-900 to-slate-900 p-8 text-white text-center relative">
           <div className="w-14 h-14 rounded-2xl bg-blue-600 mx-auto flex items-center justify-center shadow-lg shadow-blue-500/30 mb-4">
@@ -110,23 +131,70 @@ create policy "Allow auth users upload_logs" on public.upload_logs for all using
           </div>
           <h2 className="text-xl font-bold tracking-tight">LXMMA 영업 보안 인증</h2>
           <p className="text-xs text-slate-300 mt-1">
-            인가된 영업 임직원 전용 시스템 (Supabase Auth)
+            인가된 영업 임직원 전용 시스템 (Supabase Auth & Database)
           </p>
         </div>
 
         {/* Body Form */}
         <div className="p-8 space-y-6">
-          {!isSupabaseConfigured && (
-            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-xs space-y-2">
-              <div className="flex items-center space-x-2 font-bold">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>Supabase 미설정 상태</span>
+          {/* Supabase Config Toggle / Panel */}
+          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2 text-xs font-bold text-slate-800">
+                <Server className="w-4 h-4 text-blue-600" />
+                <span>Supabase 연결 설정</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] ${isSupabaseConfigured() ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                  {isSupabaseConfigured() ? '연결됨' : '설정 필요'}
+                </span>
               </div>
-              <p className="leading-relaxed">
-                현재 `.env`에 Supabase 키가 설정되지 않았습니다. 즉시 체험을 원하시면 <strong>데모 모드 입장</strong>을 이용하시거나, Supabase 프로젝트 연결 후 로그인하세요.
-              </p>
+              <button
+                type="button"
+                onClick={() => setShowConfig(!showConfig)}
+                className="text-xs text-blue-600 hover:underline font-semibold flex items-center space-x-1"
+              >
+                <Settings className="w-3.5 h-3.5 mr-0.5" />
+                <span>{showConfig ? '설정 닫기' : '설정 수정'}</span>
+              </button>
             </div>
-          )}
+
+            {showConfig && (
+              <form onSubmit={handleSaveConfig} className="space-y-3 pt-2 border-t border-slate-200">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Supabase Project URL</label>
+                  <input
+                    type="url"
+                    value={supabaseUrl}
+                    onChange={(e) => setSupabaseUrl(e.target.value)}
+                    placeholder="https://xyzproject.supabase.co"
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Supabase Anon Public Key</label>
+                  <input
+                    type="password"
+                    value={supabaseKey}
+                    onChange={(e) => setSupabaseKey(e.target.value)}
+                    placeholder="eyJhbGciOiJIUzI1NiIsIn..."
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                  />
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  {configSuccess && (
+                    <span className="text-emerald-600 text-xs font-medium flex items-center">
+                      <Check className="w-3.5 h-3.5 mr-1" /> 설정 저장 완료!
+                    </span>
+                  )}
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-xs transition-all ml-auto"
+                  >
+                    설정 저장
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
 
           {errorMsg && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center space-x-2">
