@@ -1,0 +1,6 @@
+{
+  "name": "PMMA 영업 타겟팅 및 거래선 비교 시스템",
+  "description": "국가별 PMMA 사용 업체 데이터와 기존 거래처 마스터를 대조하여 미거래 잠재 고객을 자동으로 판정하고 필터링하는 영업 지원 프로그램",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
