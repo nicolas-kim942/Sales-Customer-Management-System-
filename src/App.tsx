@@ -30,6 +30,20 @@ export default function App() {
     return INITIAL_EXISTING_ACCOUNTS;
   });
 
+  // Fetch secure master existing accounts from backend API on mount
+  useEffect(() => {
+    fetch('/api/existing-accounts')
+      .then(res => res.json())
+      .then(result => {
+        if (result.success && Array.isArray(result.data)) {
+          setExistingAccounts(result.data);
+        }
+      })
+      .catch(err => {
+        console.warn('Failed to fetch from backend API, using local fallback:', err);
+      });
+  }, []);
+
   // Potential accounts state (accumulated CSV data)
   const [potentialAccounts, setPotentialAccounts] = useState<PotentialAccount[]>(() => {
     try {
